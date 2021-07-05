@@ -32,7 +32,7 @@ void composeRotationFromEuler(const Eigen::Vector3f& EA, Eigen::Matrix3f& Rot)
 }
 
 // Computes yaw(Y), pitch(X), roll(Z), pitch Euler Angles from rotation matrix
-void getEulerAngles(Eigen::Matrix3f& R, Eigen::Vector3f& Ang)
+void getEulerAngles(const Eigen::Matrix3f& R, Eigen::Vector3f& Ang)
 {
 	//Output is X,Y,Z
 	//Derived from rotation of form: Y1*X2*Z3
@@ -48,7 +48,7 @@ void getEulerAngles(Eigen::Matrix3f& R, Eigen::Vector3f& Ang)
 // SO(3) //
 ///////////
 //The Rodrigues' equation for the matrix exponential
-Eigen::Matrix3f RodriguesRotation(Eigen::Vector3f& w)
+Eigen::Matrix3f RodriguesRotation(const Eigen::Vector3f& w)
 {
 	float theta = w.norm();
 	if (theta == 0)
@@ -69,7 +69,7 @@ Eigen::Matrix3f RodriguesRotation(Eigen::Vector3f& w)
 }
 
 //The Rodrigues' equation for the matrix exponential: unit w and theta version
-Eigen::Matrix3f RodriguesRotation(Eigen::Vector3f& w, float theta)
+Eigen::Matrix3f RodriguesRotation(const Eigen::Vector3f& w, const float theta)
 {
 	// Generate cross product operator so(3) and its square
 	Eigen::Matrix3f w_hat, w_hat2;
@@ -84,7 +84,7 @@ Eigen::Matrix3f RodriguesRotation(Eigen::Vector3f& w, float theta)
 }
 
 //log of matrix exponential for converting from SO(3) to so(3)
-Eigen::Vector3f logMatExpR(Eigen::Matrix3f& R)
+Eigen::Vector3f logMatExpR(const Eigen::Matrix3f& R)
 {	
 	float tmp   = 0.5f*(R.trace()-1.0f);
 	float theta = acos(tmp);
@@ -100,7 +100,7 @@ Eigen::Vector3f logMatExpR(Eigen::Matrix3f& R)
 	return w;
 }
 
-bool logMatExpR(Eigen::Vector3f& w, float& theta, Eigen::Matrix3f& R)
+bool logMatExpR(Eigen::Vector3f& w, float& theta, const Eigen::Matrix3f& R)
 {
 	float tmp = 0.5f*(R.trace()-1.0f);
 	theta = acosf(tmp);
@@ -119,7 +119,7 @@ bool logMatExpR(Eigen::Vector3f& w, float& theta, Eigen::Matrix3f& R)
 // SE(3) //
 ///////////
 //log from SE(3) to se(3)
-void logMatExpSE3(Eigen::Vector3f& u, Eigen::Vector3f& w, Eigen::Matrix3f& R, Eigen::Vector3f& t)
+void logMatExpSE3(Eigen::Vector3f& u, Eigen::Vector3f& w, const Eigen::Matrix3f& R, const Eigen::Vector3f& t)
 {
 	//w is Axis+Angle Representation
 	float theta;
@@ -149,7 +149,7 @@ void logMatExpSE3(Eigen::Vector3f& u, Eigen::Vector3f& w, Eigen::Matrix3f& R, Ei
 }
 
 //Exponential Map for SE(3)
-void expMapSE3(Eigen::Matrix3f& R, Eigen::Vector3f& t, Eigen::Vector3f& u, Eigen::Vector3f& w)
+void expMapSE3(Eigen::Matrix3f& R, Eigen::Vector3f& t, const Eigen::Vector3f& u, const Eigen::Vector3f& w)
 {
 	float theta  = w.norm();
 	if (fabsf(theta) < minAngle)
@@ -181,7 +181,7 @@ void expMapSE3(Eigen::Matrix3f& R, Eigen::Vector3f& t, Eigen::Vector3f& u, Eigen
 }
 
 //Adjoint for g = [R t;0 1];
-Matrix6f Adjoint(Eigen::Matrix3f& R, Eigen::Vector3f& t)
+Matrix6f Adjoint(const Eigen::Matrix3f& R, const Eigen::Vector3f& t)
 {
 	Eigen::Matrix3f t_hat;
 	t_hat << 0.0f, -t(2),  t(1),
@@ -192,7 +192,7 @@ Matrix6f Adjoint(Eigen::Matrix3f& R, Eigen::Vector3f& t)
 	Adj << R, t_hat*R, Eigen::Matrix3f::Zero(), R;
 	return Adj;
 }
-Matrix6f Adjoint(Eigen::Vector3f& u, Eigen::Vector3f& w)
+Matrix6f Adjoint(const Eigen::Vector3f& u, const Eigen::Vector3f& w)
 {
 	Eigen::Matrix3f R;
 	Eigen::Vector3f t;
@@ -201,7 +201,7 @@ Matrix6f Adjoint(Eigen::Vector3f& u, Eigen::Vector3f& w)
 	return Adjoint(R, t);
 }
 
-Matrix6f invAdjoint(Eigen::Matrix3f& R, Eigen::Vector3f& t)
+Matrix6f invAdjoint(const Eigen::Matrix3f& R, const Eigen::Vector3f& t)
 {
 	Eigen::Matrix3f t_hat;
 	t_hat << 0.0f, -t(2),  t(1),
@@ -214,7 +214,7 @@ Matrix6f invAdjoint(Eigen::Matrix3f& R, Eigen::Vector3f& t)
 	return invAdj;
 }
 //Checks on translation mapping
-void expmapSE3transV(Eigen::Matrix3f& V, Eigen::Matrix3f& Vinv, Eigen::Vector3f& w)
+void expmapSE3transV(Eigen::Matrix3f& V, Eigen::Matrix3f& Vinv, const Eigen::Vector3f& w)
 {
 	float theta  = w.norm();
 	float theta2 = (theta*theta);
@@ -239,7 +239,7 @@ void expmapSE3transV(Eigen::Matrix3f& V, Eigen::Matrix3f& Vinv, Eigen::Vector3f&
 // SL(3) //
 ///////////
 //Compose a homography from Rotation Matrix and translation
-Eigen::Matrix3f homographyESM(Eigen::Matrix3f& R, Eigen::Vector3f& t)
+Eigen::Matrix3f homographyESM(const Eigen::Matrix3f& R, const Eigen::Vector3f& t)
 {
 	/*
 		Compose Homography:
@@ -259,7 +259,7 @@ Eigen::Matrix3f homographyESM(Eigen::Matrix3f& R, Eigen::Vector3f& t)
 	H *= pow(1.0f/scale, 1.0f/3.0f);
 	return H;
 }
-Eigen::Matrix3f homographyESM(Eigen::Matrix3f& R, Eigen::Vector3f& t, Eigen::Vector3f& n)
+Eigen::Matrix3f homographyESM(const Eigen::Matrix3f& R, const Eigen::Vector3f& t, const Eigen::Vector3f& n)
 {
 	Eigen::Matrix3f H;
 	H << R;
@@ -271,7 +271,7 @@ Eigen::Matrix3f homographyESM(Eigen::Matrix3f& R, Eigen::Vector3f& t, Eigen::Vec
 }
 
 //log of matrix exponential for converting from SL(3) to sl(3)
-Vector8f logMatExpSL3(Eigen::Matrix3f& H)
+Vector8f logMatExpSL3(const Eigen::Matrix3f& H)
 {
 	//H = exp(A)
 	//A = sum_i<8(Ai*xi)
@@ -286,7 +286,7 @@ Vector8f logMatExpSL3(Eigen::Matrix3f& H)
 }
 
 //Exponential Map for SL(3)
-void expMapSL3(Eigen::Matrix3f& H, Vector8f& x)
+void expMapSL3(Eigen::Matrix3f& H, const Vector8f& x)
 {
 	//H = exp(A)
 	//A = sum_i<8(Ai*xi)
@@ -299,7 +299,7 @@ void expMapSL3(Eigen::Matrix3f& H, Vector8f& x)
 }
 
 //Recover Rotation and translation from H1 and compare against reference R and t
-int extractRTfromH(vMatrix3f& vRot, vVector3f& vtrans, vVector3f& vnorm, Eigen::Matrix3f& H, Eigen::Matrix3f& Rr)
+int extractRTfromH(vMatrix3f& vRot, vVector3f& vtrans, vVector3f& vnorm, const Eigen::Matrix3f& H, const Eigen::Matrix3f& Rr)
 {
 	// We recover 8 motion hypotheses using the method of Faugeras et al.
 	// Motion and structure from motion in a piecewise planar environment.
