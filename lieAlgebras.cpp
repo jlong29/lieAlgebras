@@ -14,7 +14,7 @@ namespace lieAlgebras
 //////////////////
 // EULER ANGLES //
 //////////////////
-//Rotation matrix computation from Euler Angles
+//Rotation matrix computation from Euler Angles in camera frame: yaw(Y), pitch(X), roll(Z)
 void composeRotationFromEuler(const Eigen::Vector3f& EA, Eigen::Matrix3f& Rot)
 {
 	//Convert rotation values into matrix using rotations about principle axes
@@ -31,6 +31,7 @@ void composeRotationFromEuler(const Eigen::Vector3f& EA, Eigen::Matrix3f& Rot)
 	Rot << c1*c3+s1*s2*s3, c3*s1*s2-c1*s3, c2*s1, c2*s3, c2*c3, -s2, c1*s2*s3-c3*s1, c1*c3*s2+s1*s3, c1*c2;
 }
 
+// Computes yaw(Y), pitch(X), roll(Z), pitch Euler Angles from rotation matrix
 void getEulerAngles(Eigen::Matrix3f& R, Eigen::Vector3f& Ang)
 {
 	//Output is X,Y,Z
