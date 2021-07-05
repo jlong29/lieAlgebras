@@ -100,17 +100,37 @@ Eigen::Vector3f logMatExpR(Eigen::Matrix3f& R)
 	return w;
 }
 
+bool logMatExpR(Eigen::Vector3f& w, float& theta, Eigen::Matrix3f& R)
+{
+	float tmp = 0.5f*(R.trace()-1.0f);
+	theta = acosf(tmp);
+	if ((fabsf(tmp) > 1.0f) || (fabsf(theta) < minAngle)){
+		return false;
+	}
+
+	float stheta = sinf(theta);
+	w << R(2,1)-R(1,2), R(0,2)-R(2,0), R(1,0)-R(0,1);
+	w /= 2.0f*stheta;
+	w *= theta;
+	return true;
+}
+
 ///////////
 // SE(3) //
 ///////////
 //log from SE(3) to se(3)
 void logMatExpSE3(Eigen::Vector3f& u, Eigen::Vector3f& w, Eigen::Matrix3f& R, Eigen::Vector3f& t)
 {
-	//w is just the Axis+Angle Representation
-	w = logMatExpR(R);
+	//w is Axis+Angle Representation
+	float theta;
+	if (!logMatExpR(w, theta, R))
+	{
+		w = Eigen::Vector3f::Zero();
+		u = t;
+		return;
+	}
 
 	//u is more complicated
-	float theta  = w.norm();
 	float theta2 = (theta*theta);
 
 	// Generate cross product operator so(3) and its square
@@ -125,12 +145,19 @@ void logMatExpSE3(Eigen::Vector3f& u, Eigen::Vector3f& w, Eigen::Matrix3f& R, Ei
 
 	Eigen::Matrix3f Vinv = Eigen::Matrix3f::Identity() - 0.5f*w_hat + ((1.0f/theta2)*(1.0f - (theta*stheta)/(2.0f*(1.0f - cos(theta)))))*w_hat2;
 	u = Vinv*t;
+	return;
 }
 
 //Exponential Map for SE(3)
 void expMapSE3(Eigen::Matrix3f& R, Eigen::Vector3f& t, Eigen::Vector3f& u, Eigen::Vector3f& w)
 {
 	float theta  = w.norm();
+	if (fabsf(theta) < minAngle)
+	{
+		R = Eigen::Matrix3f::Identity();
+		t = u;
+		return;
+	}
 	float theta2 = (theta*theta);
 	float theta3 = theta2*theta;
 
@@ -150,6 +177,7 @@ void expMapSE3(Eigen::Matrix3f& R, Eigen::Vector3f& t, Eigen::Vector3f& u, Eigen
 
 	R = Eigen::Matrix3f::Identity() + w_hat*(sin(theta)/theta) + w_hat2*((1-cos(theta))/(theta*theta));
 	t = V*u;
+	return;
 }
 
 //Adjoint for g = [R t;0 1];
@@ -223,19 +251,23 @@ Eigen::Matrix3f homographyESM(Eigen::Matrix3f& R, Eigen::Vector3f& t)
 		H = [R1 | R2 | R3+t]
 	*/
 	//H = [R1 | R2 | R3+t]
-	R.col(2) += t;
+	Eigen::Matrix3f H;
+	H << R;
+	H.col(2) += t;
 	// Scale to have det(H) = 1
-	float scale = R.determinant();
-	R *= pow(1.0f/scale, 1.0f/3.0f);
-	return R;
+	float scale = H.determinant();
+	H *= pow(1.0f/scale, 1.0f/3.0f);
+	return H;
 }
 Eigen::Matrix3f homographyESM(Eigen::Matrix3f& R, Eigen::Vector3f& t, Eigen::Vector3f& n)
 {
-	R += t*n.transpose();
+	Eigen::Matrix3f H;
+	H << R;
+	H += t*n.transpose();
 	// Scale to have det(H) = 1
-	float scale = R.determinant();
-	R *= pow(1.0f/scale, 1.0f/3.0f);
-	return R;
+	float scale = H.determinant();
+	H *= pow(1.0f/scale, 1.0f/3.0f);
+	return H;
 }
 
 //log of matrix exponential for converting from SL(3) to sl(3)
@@ -267,15 +299,28 @@ void expMapSL3(Eigen::Matrix3f& H, Vector8f& x)
 }
 
 //Recover Rotation and translation from H1 and compare against reference R and t
-bool extractRTfromH(vMatrix3f& vRot, vVector3f& vtrans, Eigen::Matrix3f& H, Eigen::Matrix3f& Rr)
+int extractRTfromH(vMatrix3f& vRot, vVector3f& vtrans, vVector3f& vnorm, Eigen::Matrix3f& H, Eigen::Matrix3f& Rr)
 {
 	// We recover 8 motion hypotheses using the method of Faugeras et al.
 	// Motion and structure from motion in a piecewise planar environment.
 	// International Journal of Pattern Recognition and Artificial Intelligence, 1988
 
+	//ret indicates SV multiplicity: 0 -> all distinct, 1-> 2 the same, 2-> all 3 the same
+	int ret=0;
+	//Clear output vectors
+	vRot.clear();
+	vtrans.clear();
+	vnorm.clear();
+
+	vMatrix3f vR;
+	vVector3f vt, vn;
+	vR.reserve(8);
+	vt.reserve(8);
+	vn.reserve(8);
+
 	//SVD
-	Eigen::Matrix3f U, Vt, V;	//Orthogonal matrices
-	Eigen::Vector3f w;			//singular values
+	Eigen::Matrix3f U, Vt, V;   //Orthogonal matrices
+	Eigen::Vector3f w;          //singular values
 	Eigen::JacobiSVD<Eigen::Matrix3f> svd(H, Eigen::ComputeFullV | Eigen::ComputeFullU);
 	U  = svd.matrixU();
 	w  = svd.singularValues();
@@ -287,149 +332,244 @@ bool extractRTfromH(vMatrix3f& vRot, vVector3f& vtrans, Eigen::Matrix3f& H, Eige
 	//Eigen::Matrix3f diff = H - chk;
 	//std::cout << "diff: " << diff.array().abs().sum() << std::endl << std::endl;
 
-	float s = U.determinant()*Vt.determinant();
+	float s = U.determinant()*V.determinant();
 
 	float d1 = w(0);
 	float d2 = w(1);
 	float d3 = w(2);
 
-	//Check for degenerate cases
+	//Check SV multiplcity
 	if((d1/d2<1.00001f) || (d2/d3<1.00001f))
 	{
-		return false;
-	}
-
-	vMatrix3f vR;
-	vVector3f vt, vn;
-	vR.reserve(8);
-	vt.reserve(8);
-	vn.reserve(8);
-
-	//n'=[x1 0 x3] 4 posibilities e1=e3=1, e1=1 e3=-1, e1=-1 e3=1, e1=e3=-1
-	float d1d1 = d1*d1;
-	float d2d2 = d2*d2;
-	float d3d3 = d3*d3;
-	float aux1 = sqrt((d1d1-d2d2)/(d1d1-d3d3));
-	float aux3 = sqrt((d2d2-d3d3)/(d1d1-d3d3));
-	float x1[] = {aux1,aux1,-aux1,-aux1};
-	float x3[] = {aux3,-aux3,aux3,-aux3};
-
-	//case d'=d2
-	float aux_stheta = sqrt((d1d1-d2d2)*(d2d2-d3d3))/((d1+d3)*d2);
-
-	float ctheta = (d2d2+d1*d3)/((d1+d3)*d2);
-	float stheta[] = {aux_stheta, -aux_stheta, -aux_stheta, aux_stheta};
-
-	for(int i=0; i<4; i++)
-	{
-		Eigen::Matrix3f Rp=Eigen::Matrix3f::Identity();
-		Rp(0,0)=ctheta;
-		Rp(0,2)=-stheta[i];
-		Rp(2,0)=stheta[i];
-		Rp(2,2)=ctheta;
-
-		Eigen::Matrix3f R = s*U*Rp*Vt;
-		vR.push_back(R);
-
-		Eigen::Vector3f tp;
-		tp(0)=x1[i];
-		tp(1)=0.0f;
-		tp(2)=-x3[i];
-		tp*=d1-d3;
-
-		Eigen::Vector3f t = U*tp;
-		vt.push_back(t);
-
-		Eigen::Vector3f np;
-		np(0)=x1[i];
-		np(1)=0.0f;
-		np(2)=x3[i];
-
-		Eigen::Vector3f n = V*np;
-		if(n(2)<0)
-			n=-n;
-		vn.push_back(n);
-	}
-
-	//case d'=-d2
-	float aux_sphi = sqrt((d1d1-d2d2)*(d2d2-d3d3))/((d1-d3)*d2);
-
-	float cphi = (d1*d3-d2d2)/((d1-d3)*d2);
-	float sphi[] = {aux_sphi, -aux_sphi, -aux_sphi, aux_sphi};
-
-	for(int i=0; i<4; i++)
-	{
-		Eigen::Matrix3f Rp=Eigen::Matrix3f::Identity();
-		Rp(0,0)=cphi;
-		Rp(0,2)=sphi[i];
-		Rp(1,1)=-1.0f;
-		Rp(2,0)=sphi[i];
-		Rp(2,2)=-cphi;
-
-		Eigen::Matrix3f R = s*U*Rp*Vt;
-		vR.push_back(R);
-
-		Eigen::Vector3f tp;
-		tp(0)=x1[i];
-		tp(1)=0.0f;
-		tp(2)=x3[i];
-		tp*=d1+d3;
-
-		Eigen::Vector3f t = U*tp;
-		vt.push_back(t);
-
-		Eigen::Vector3f np;
-		np(0)=x1[i];
-		np(1)=0.0f;
-		np(2)=x3[i];
-
-		Eigen::Vector3f n = V*np;
-		if(n(2)<0)
-			n=-n;
-		vn.push_back(n);
-	}
-
-	//Inspect and compare against reference Rr and tr
-	float R_diff;
-	Eigen::Vector3f w_chk, n_ref;
-
-	//The assumption is that n is along the z-axis at a distance of 1
-	n_ref << 0.0f, 0.0f, 1.0f;
-	std::vector< std::pair<float, int> > scoreVec;
-	for (size_t i = 0; i < 8; i++)
-	{
-		//Eigen::Matrix3f Hr = homographyESM(vR[i], vt[i], vn[i]);
-		//std::cout << "Hr:\n" << Hr <<std::endl;
-		//std::cout << "sl(3) from Hr: " << logMatExpSE3(Hr).transpose() << std::endl;
-
-		float diff = (n_ref - vn[i]).array().abs().sum();
-		if (diff < 0.01f)
+		if((d1/d2<1.00001f) & (d2/d3<1.00001f))
 		{
-			//std::cout << "RT: " << i << std::endl;
-			//std::cout << vR[i] << std::endl << std::endl;
-			//std::cout << vt[i].transpose() << std::endl;
-			//std::cout << vn[i].transpose() << std::endl << std::endl;
+			ret=2;
+			//All SVs are the same: pure rotation and symmetry
+			//case d'=d2
+			Eigen::Matrix3f Rp=Eigen::Matrix3f::Identity();
+			Eigen::Matrix3f R = s*U*Rp*Vt;
+			vR.push_back(R);
 
-			R_diff = (vR[i]-Rr).array().abs().sum();
-			//std::cout << "Comparison to Reference Rotation: " << R_diff << std::endl << std::endl;
+			Eigen::Vector3f t = Eigen::Vector3f::Zero();
+			vt.push_back(t);
 
-			//Log score
-			scoreVec.push_back( std::make_pair(R_diff, i));
+			//normal is undetermined, so setting to default n = [0, 0, 1];
+			Eigen::Vector3f n;
+			n << 0.0f, 0.0f, 1.0f;
+			vn.push_back(n);
+
+			//case d'=-d2
+			Rp *= -1.0f;
+			R   = s*U*Rp*Vt;
+			vR.push_back(R);
+			vt.push_back(t);
+			vn.push_back(n);
+		} else
+		{
+			// 2 SVs are the same
+			//x1=x2=0, x3=+/-1
+			ret=1;
+			float x3[] = {1.0f, -1.0f};
+
+			//case d'=d2
+			for (int i=0; i<2; i++)
+			{
+				Eigen::Matrix3f Rp=Eigen::Matrix3f::Identity();
+				Eigen::Matrix3f R = s*U*Rp*Vt;
+				vR.push_back(R);	//R is the same for both cases
+					
+				Eigen::Vector3f np;
+				np(0)=0.0f;
+				np(1)=0.0f;
+				np(2)=x3[i];
+
+				Eigen::Vector3f n = V*np;
+				vn.push_back(n);
+
+				Eigen::Vector3f tp = np;
+				tp*=d3-d1;
+
+				Eigen::Vector3f t = U*tp;
+				vt.push_back(t);
+			}
+
+			//case d'=-d2
+			for (int i=0; i<2; i++)
+			{
+				Eigen::Matrix3f Rp=Eigen::Matrix3f::Identity();
+				Rp(0,0) = -1.0f;
+				Rp(1,1) = -1.0f;
+				Eigen::Matrix3f R = s*U*Rp*Vt;
+				vR.push_back(R);	//R is the same for both cases
+					
+				Eigen::Vector3f np;
+				np(0)=0.0f;
+				np(1)=0.0f;
+				np(2)=x3[i];
+
+				Eigen::Vector3f n = V*np;
+				vn.push_back(n);
+
+				Eigen::Vector3f tp = np;
+				tp*=d3+d1;
+
+				Eigen::Vector3f t = U*tp;
+				vt.push_back(t);
+			}
+		}
+	} else
+	{
+		//All SVs are distinct
+
+		//n'=[x1 0 x3] 4 posibilities e1=e3=1, e1=1 e3=-1, e1=-1 e3=1, e1=e3=-1
+		float d1d1 = d1*d1;
+		float d2d2 = d2*d2;
+		float d3d3 = d3*d3;
+		float aux1 = sqrt((d1d1-d2d2)/(d1d1-d3d3));
+		float aux3 = sqrt((d2d2-d3d3)/(d1d1-d3d3));
+		float x1[] = {aux1,aux1,-aux1,-aux1};
+		float x3[] = {aux3,-aux3,aux3,-aux3};
+
+		//case d'=d2
+		float aux_stheta = sqrt((d1d1-d2d2)*(d2d2-d3d3))/((d1+d3)*d2);
+
+		float ctheta = (d2d2+d1*d3)/((d1+d3)*d2);
+		float stheta[] = {aux_stheta, -aux_stheta, -aux_stheta, aux_stheta};
+
+		for(int i=0; i<4; i++)
+		{
+			Eigen::Matrix3f Rp=Eigen::Matrix3f::Identity();
+			Rp(0,0)=ctheta;
+			Rp(0,2)=-stheta[i];
+			Rp(2,0)=stheta[i];
+			Rp(2,2)=ctheta;
+
+			Eigen::Matrix3f R = s*U*Rp*Vt;
+			vR.push_back(R);
+
+			Eigen::Vector3f tp;
+			tp(0)=x1[i];
+			tp(1)=0.0f;
+			tp(2)=-x3[i];
+			tp*=d1-d3;
+
+			Eigen::Vector3f t = U*tp;
+			vt.push_back(t);
+
+			Eigen::Vector3f np;
+			np(0)=x1[i];
+			np(1)=0.0f;
+			np(2)=x3[i];
+
+			Eigen::Vector3f n = V*np;
+			vn.push_back(n);
+		}
+
+		//case d'=-d2
+		float aux_sphi = sqrt((d1d1-d2d2)*(d2d2-d3d3))/((d1-d3)*d2);
+
+		float cphi = (d1*d3-d2d2)/((d1-d3)*d2);
+		float sphi[] = {aux_sphi, -aux_sphi, -aux_sphi, aux_sphi};
+
+		for(int i=0; i<4; i++)
+		{
+			Eigen::Matrix3f Rp=Eigen::Matrix3f::Identity();
+			Rp(0,0)=cphi;
+			Rp(0,2)=sphi[i];
+			Rp(1,1)=-1.0f;
+			Rp(2,0)=sphi[i];
+			Rp(2,2)=-cphi;
+
+			Eigen::Matrix3f R = s*U*Rp*Vt;
+			vR.push_back(R);
+
+			Eigen::Vector3f tp;
+			tp(0)=x1[i];
+			tp(1)=0.0f;
+			tp(2)=x3[i];
+			tp*=d1+d3;
+
+			Eigen::Vector3f t = U*tp;
+			vt.push_back(t);
+
+			Eigen::Vector3f np;
+			np(0)=x1[i];
+			np(1)=0.0f;
+			np(2)=x3[i];
+
+			Eigen::Vector3f n = V*np;
+			vn.push_back(n);
 		}
 	}
 
-	//Sort scores
-	std::sort(scoreVec.begin(), scoreVec.end());
-	//Return the 2 lowest scoring Rotation differences and associated t
-	vRot.push_back(vR[scoreVec[0].second]); vtrans.push_back(vt[scoreVec[0].second]);
-	vRot.push_back(vR[scoreVec[1].second]); vtrans.push_back(vt[scoreVec[1].second]);
+	std::vector< std::pair<float, int> > scoreVec0;
+
+	//Inspect and compare against reference Rr and tr
+	//Eigen::Vector3f EA;
+	float R_diff;
+	//float planeSide;
+	//std::cout << std::endl;
+	for (size_t i = 0; i < vR.size(); i++)
+	{
+		//getEulerAngles(EA, vR[i]);
+		R_diff    = (vR[i]-Rr).array().abs().sum();
+		//planeSide = vt[i].transpose()*vn[i];
+
+		//std::cout << "R: " << i << " at " << EA.transpose() << std::endl;
+		//std::cout << "Norm: " << i << " at " << vn[i].transpose() << std::endl;
+		//std::cout << "Trans: " << i << " at " << vt[i].transpose() << std::endl;
+		//std::cout << "R_diff: " << R_diff << std::endl<< std::endl;
+		//std::cout << "PlaneSide: " << planeSide << std::endl << std::endl;
+		//Log score
+		scoreVec0.push_back( std::make_pair(R_diff, i) );
+	}
+
+	//Sort Rotation Scores
+	std::sort(scoreVec0.begin(), scoreVec0.end());
+
+	//vRot.push_back(vR[scoreVec0[0].second]);
+	//vtrans.push_back(vt[scoreVec0[0].second]);
+	//vnorm.push_back(vn[scoreVec0[0].second]);
 
 	/*
-	for (int i=0; i<scoreVec.size(); i++)
-		std::cout << scoreVec[i].second << ", " << scoreVec[i].first << std::endl;
+	for (size_t i=0; i<4; i++)
+	{
+		//std::cout << "Sorted Norm Cost: " << scoreVec1[i].first << " at " << vn[scoreVec0[scoreVec1[i].second].second].transpose() << std::endl;
+		if (vn[scoreVec0[i].second](2) > 0.0f)
+		{
+			vRot.push_back(vR[scoreVec0[i].second]);
+			vtrans.push_back(vt[scoreVec0[i].second]);
+			vnorm.push_back(vn[scoreVec0[i].second]);
+		}
+		
+		//R_diff    = (vR[scoreVec0[i].second]-Rr).array().abs().sum();
+		//std::cout << "R_diff: " << R_diff << std::endl;
+		//vRot.push_back(vR[i]);
+		//vtrans.push_back(vt[i]);
+		//vnorm.push_back(vn[i]);
+	}
 	*/
 
-	return true;
+	//Now score motion normal against reference normal
+	std::vector< std::pair<float, int> > scoreVec1;
+	for (size_t i=0; i<vR.size()/2; i++)
+	{
+		//Looking for largest positive z-coord
+		float normScore = vn[scoreVec0[i].second](2);
+		scoreVec1.push_back( std::make_pair(normScore, i ));
+	}
+	//Sort Norm Scores: output should be descending
+	std::sort(scoreVec1.begin(), scoreVec1.end());
+	std::reverse(scoreVec1.begin(), scoreVec1.end());
+
+	//std::cout << "NORM score index: " << scoreVec1[0].second<<std::endl;
+	//std::cout << "R DIFF index: " << scoreVec0[scoreVec1[0].second].second<<std::endl;
+
+	vRot.push_back(vR[scoreVec0[scoreVec1[0].second].second]);
+	vtrans.push_back(vt[scoreVec0[scoreVec1[0].second].second]);
+	vnorm.push_back(vn[scoreVec0[scoreVec1[0].second].second]);
+
+	return ret;
 }
 
 } //namespace lieAlgebras

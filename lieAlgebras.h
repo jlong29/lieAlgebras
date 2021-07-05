@@ -37,6 +37,7 @@ Eigen::Matrix3f RodriguesRotation(Eigen::Vector3f& w, float theta);
 
 //log of matrix exponential for converting from SO(3) to so(3)
 Eigen::Vector3f logMatExpR(Eigen::Matrix3f& R);
+bool logMatExpR(Eigen::Vector3f& w, float& theta, Eigen::Matrix3f& R);
 
 ///////////
 // SE(3) //
@@ -69,7 +70,7 @@ Vector8f logMatExpSL3(Eigen::Matrix3f& H);
 void expMapSL3(Eigen::Matrix3f& H, Vector8f& x);
 
 //Recover Rotation and translation from H
-bool extractRTfromH(vMatrix3f& vRot, vVector3f& vtrans, Eigen::Matrix3f& H, Eigen::Matrix3f& Rr);
+int extractRTfromH(vMatrix3f& vRot, vVector3f& vtrans, vVector3f& vnorm, Eigen::Matrix3f& H, Eigen::Matrix3f& Rr);
 
 } //namespace lieAlgebras
 

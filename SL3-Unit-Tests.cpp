@@ -31,7 +31,7 @@ int main()
 	Eigen::Vector3f w, t, t_chk;
 	Eigen::Matrix3f R, R_chk, H0, H1;
 	vMatrix3f vR_chk;
-	vVector3f vt_chk;
+	vVector3f vt_chk, vn_chk;
 	Vector8f x, x_chk;
 
 	//Generate a random rotation axis-angle and translation
@@ -79,8 +79,7 @@ int main()
 	{
 		start = std::chrono::steady_clock::now();
 		//Recover Rotation and translation from H1 and compare against reference R
-		if (!extractRTfromH(vR_chk, vt_chk, H1, R))
-			std::cout << "extractRTfromH::Unable to extract R and t from H!" << std::endl;
+		extractRTfromH(vR_chk, vt_chk, vn_chk, H1, R); 
 		end   = std::chrono::steady_clock::now();
 		elapsed += end-start;
 	}
@@ -89,11 +88,12 @@ int main()
 	std::cout << "\nTop 2 Rotation/Translation Pairs:" << std::endl;
 	for (int i=0; i<2;i++)
 	{
-		std::cout << "\nRT pair " << i << std::endl;
-		std::cout << vR_chk[i] << std::endl;
-		std::cout << vt_chk[i].transpose() << std::endl;
-		std::cout << "Reconstructed H:\n" << homographyESM(vR_chk[i], vt_chk[i]) <<std::endl;
+		std::cout << "\nRTN tuple " << i << std::endl;
+		std::cout << vR_chk[i] << std::endl<< std::endl;
+		std::cout << vt_chk[i].transpose() << std::endl<< std::endl;
+		std::cout << vn_chk[i].transpose() << std::endl<< std::endl;
+		std::cout << "Reconstructed H:\n" << homographyESM(vR_chk[i], vt_chk[i], vn_chk[i]) <<std::endl;
 
-		std::cout << "Percentage Error between reference and target T: " << (100.0f*((t-vt_chk[i]).array().abs().sum())/t.array().abs().sum()) << std::endl;
+		std::cout << "Percentage Error between reference and target Trans: " << (100.0f*((t-vt_chk[i]).array().abs().sum())/t.array().abs().sum()) << std::endl;
 	}
 }
