@@ -23,6 +23,9 @@ typedef std::vector<Eigen::Vector3f, Eigen::aligned_allocator<Eigen::Vector3f> >
 //Rotation matrix computation from Euler Angles in camera frame: yaw(Y), pitch(X), roll(Z)
 void composeRotationFromEuler(const Eigen::Vector3f& EA, Eigen::Matrix3f& Rot);
 
+//Rotation matrix computation: passive from active parameters i.e. Euler Angles
+void composePassiveRotation(const Eigen::Vector3f& EA, Eigen::Matrix3f& Rot);
+
 // Computes yaw(Y), pitch(X), roll(Z), pitch Euler Angles from rotation matrix
 void getEulerAngles(const Eigen::Matrix3f& R, Eigen::Vector3f& Ang);
 

@@ -31,6 +31,25 @@ void composeRotationFromEuler(const Eigen::Vector3f& EA, Eigen::Matrix3f& Rot)
 	Rot << c1*c3+s1*s2*s3, c3*s1*s2-c1*s3, c2*s1, c2*s3, c2*c3, -s2, c1*s2*s3-c3*s1, c1*c3*s2+s1*s3, c1*c2;
 }
 
+//Rotation matrix computation: passive from active parameters i.e. Euler Angles
+void composePassiveRotation(const Eigen::Vector3f& EA, Eigen::Matrix3f& Rot)
+{
+	//Convert rotation values into matrix using rotations about principle axes
+	//Most IMUs uses the roll, pitch, yaw Tai-Bryan convention
+	//https://en.wikipedia.org/wiki/Euler_angles
+
+	//We want the rotation passive
+
+	//Tait-Bryan Angles: transpose(Y1*X2*Z3)
+	//This parameterization places the singularity at pitch (X) +/- pi/2 when computing Euler Angles
+
+	float c1 = cosf(EA(1)); float s1 = sinf(EA(1));
+	float c2 = cosf(EA(0)); float s2 = sinf(EA(0));
+	float c3 = cosf(EA(2)); float s3 = sinf(EA(2));
+
+	Rot << c1*c3+s1*s2*s3, c2*s3, c1*s2*s3-c3*s1, c3*s1*s2-c1*s3, c2*c3, c1*c3*s2+s1*s3, c2*s1, -s2, c1*c2;
+}
+
 // Computes yaw(Y), pitch(X), roll(Z), pitch Euler Angles from rotation matrix
 void getEulerAngles(const Eigen::Matrix3f& R, Eigen::Vector3f& Ang)
 {
