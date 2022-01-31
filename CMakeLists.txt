@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.1)
-project(eigen_mvn CXX)
+project(lieAlgebras CXX)
 
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -76,4 +76,6 @@ target_include_directories(
 		$ENV{EIGEN_ROOT_DIR}
 )
 target_link_libraries(CoordinateFrame-Sim2 lieAlgebras )
+
+install(TARGETS lieAlgebras DESTINATION ${CMAKE_CURRENT_BINARY_DIR})
 
