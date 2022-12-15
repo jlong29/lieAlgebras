@@ -18,7 +18,7 @@ using namespace lieAlgebras;
 // UTILS
 float degrees2radians(float deg)
 {
-  return deg*(PI/180.0f);
+  return deg*(M_PI/180.0f);
 }
 
 //////////

@@ -3,13 +3,13 @@
 
 #include <Eigen/Dense>
 #include <Eigen/StdVector>
+#include <math.h>
 
 namespace lieAlgebras
 {
 
 //CONSTANTS
-const float PI       = std::acos(-1.0);
-const float minAngle = 0.01f*(PI/180.0f);
+const float minAngle = 0.01f*(M_PI/180.0f);
 //TYPEDEFS
 typedef Eigen::Matrix< float,6,1 > Vector6f;
 typedef Eigen::Matrix< float,8,1 > Vector8f;

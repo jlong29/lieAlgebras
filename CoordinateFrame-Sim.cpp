@@ -20,11 +20,11 @@ using namespace lieAlgebras;
 // UTILS
 static inline float degrees2radians(float deg)
 {
-  return deg*(PI/180.0f);
+  return deg*(M_PI/180.0f);
 }
 static inline float degrees(float radians)
 {
-    return radians * (180.0f / PI);
+    return radians * (180.0f / M_PI);
 }
 //Get Euler Angles in degrees: roll, pitch, yaw
 void getEulerAngles(Eigen::Vector3f& Ang, const Eigen::Matrix3f& R)
